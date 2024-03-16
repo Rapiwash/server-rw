@@ -1,8 +1,8 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
 
 const ProductoSchema = new mongoose.Schema(
   {
-    codigo: String,
+    // codigo: String,
     nombre: String,
     idCategoria: String,
     precioVenta: Number,
@@ -24,9 +24,9 @@ const ProductoSchema = new mongoose.Schema(
       },
     ],
   },
-  { collection: 'Producto' }
+  { collection: "Producto" }
 );
 
-const Producto = mongoose.model('Producto', ProductoSchema);
+const Producto = mongoose.model("Producto", ProductoSchema);
 
 export default Producto;
