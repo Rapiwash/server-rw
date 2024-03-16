@@ -342,7 +342,7 @@ router.post("/register", checkUniqueFields, async (req, res) => {
       name,
       email,
       phone,
-      statae: "inactivo",
+      state: "inactivo",
     });
 
     const usuarioGuardado = await newUser.save();
