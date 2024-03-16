@@ -52,8 +52,12 @@ router.get("/get-informacion", async (req, res) => {
           const id = elemento._id.toString();
           // Si el _id ya existe en el mapa, sumar las cantidades y totales
           if (combinedInfoMap[id]) {
-            combinedInfoMap[id].cantidad += +item.cantidad.toFixed(2);
-            combinedInfoMap[id].montoGenerado += +item.total.toFixed(2);
+            combinedInfoMap[id].cantidad += parseFloat(
+              item.cantidad.toFixed(2)
+            );
+            combinedInfoMap[id].montoGenerado += parseFloat(
+              item.total.toFixed(2)
+            );
           } else {
             // Si el _id no existe en el mapa, agregar un nuevo objeto al mapa
             combinedInfoMap[id] = {
@@ -61,9 +65,9 @@ router.get("/get-informacion", async (req, res) => {
               _id: elemento._id,
               codigo: elemento.codigo,
               tipo: elemento.tipo,
-              cantidad: +item.cantidad.toFixed(2),
+              cantidad: parseFloat(item.cantidad.toFixed(2)),
               simboloMedida: elemento.simboloMedida, // Corregido el nombre del campo
-              montoGenerado: +item.total.toFixed(2),
+              montoGenerado: parseFloat(item.total.toFixed(2)),
             };
           }
         }
