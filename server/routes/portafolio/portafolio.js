@@ -2,15 +2,33 @@ import express from "express";
 import Producto from "../../models/portafolio/productos.js";
 import Servicio from "../../models/portafolio/servicios.js";
 import Factura from "../../models/Factura.js";
+import moment from "moment";
 
 const router = express.Router();
 
-router.get("/get-informacion", async (req, res) => {
+router.get("/get-informacion/:fecha", async (req, res) => {
   try {
+    const date = req.params.fecha;
+
+    // Validar que se haya proporcionado una fecha
+    if (!date) {
+      return res
+        .status(400)
+        .json({ mensaje: "Se requiere proporcionar una fecha" });
+    }
+
+    const fechaFormato = moment(date, "YYYY-MM-DD");
+    const mes = fechaFormato.month() + 1;
+    const año = fechaFormato.year();
+
+    const inicioMes = moment(`${año}-${mes}-01`, "YYYY-MM-DD");
+    const finMes = moment(inicioMes).endOf("month");
+
     // Obtener productos
     const productos = await Producto.find(
       {},
-      "nombre simboloMedida codigo _id"
+      // "nombre simboloMedida codigo _id"
+      "nombre simboloMedida _id"
     ).lean();
     // Asignar tipo 'productos' a cada producto
     const iProductos = productos.map((producto) => ({
@@ -21,7 +39,8 @@ router.get("/get-informacion", async (req, res) => {
     // Obtener servicios
     const servicios = await Servicio.find(
       {},
-      "nombre simboloMedida codigo _id"
+      // "nombre simboloMedida codigo _id"
+      "nombre simboloMedida _id"
     ).lean();
     // Asignar tipo 'servicios' a cada servicio
     const iServicios = servicios.map((servicio) => ({
@@ -33,7 +52,12 @@ router.get("/get-informacion", async (req, res) => {
     const iPortafolio = [...iProductos, ...iServicios];
 
     // Obtener facturas
-    const facturas = await Factura.find();
+    const facturas = await Factura.find({
+      "dateRecepcion.fecha": {
+        $gte: inicioMes.format("YYYY-MM-DD"),
+        $lte: finMes.format("YYYY-MM-DD"),
+      },
+    });
 
     // Objeto para almacenar la información combinada por _id
     const combinedInfoMap = {};
@@ -59,7 +83,7 @@ router.get("/get-informacion", async (req, res) => {
             combinedInfoMap[id] = {
               nombre: elemento.nombre,
               _id: elemento._id,
-              codigo: elemento.codigo,
+              // codigo: elemento.codigo,
               tipo: elemento.tipo,
               cantidad: +item.cantidad,
               simboloMedida: elemento.simboloMedida, // Corregido el nombre del campo
@@ -78,7 +102,7 @@ router.get("/get-informacion", async (req, res) => {
           nombre: elemento.nombre,
           _id: elemento._id,
           tipo: elemento.tipo,
-          codigo: elemento.codigo,
+          // codigo: elemento.codigo,
           cantidad: 0,
           simboloMedida: elemento.simboloMedida, // Corregido el nombre del campo
           montoGenerado: 0,

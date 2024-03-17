@@ -1,4 +1,4 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
 
 const facturaSchema = new mongoose.Schema({
   dateCreation: {
@@ -6,7 +6,10 @@ const facturaSchema = new mongoose.Schema({
     hora: String,
   },
   codRecibo: String,
-  dateRecepcion: {},
+  dateRecepcion: {
+    fecha: String,
+    hora: String,
+  },
   Modalidad: String,
   Nombre: String,
   Items: [
@@ -60,6 +63,6 @@ const facturaSchema = new mongoose.Schema({
   typeRegistro: String,
 });
 
-const Factura = mongoose.model('Factura', facturaSchema);
+const Factura = mongoose.model("Factura", facturaSchema);
 
 export default Factura;
