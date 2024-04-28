@@ -2,7 +2,6 @@ import mongoose from "mongoose";
 
 const ServicioSchema = new mongoose.Schema(
   {
-    // codigo: String,
     nombre: String,
     idCategoria: String,
     precioVenta: Number,
