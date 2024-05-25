@@ -254,8 +254,9 @@ router.post("/add-factura", openingHours, async (req, res) => {
 
     await session.commitTransaction();
 
-    const facturaId = facturaGuardada._id.toString();
-    const infoPagos = await GetPagosIdOrden(facturaId);
+    const infoPagos = await Pagos.find({
+      _id: { $in: facturaGuardada.listPago },
+    }).lean();
 
     const finalLPagos = [];
     if (lPagos.length > 0) {
@@ -355,137 +356,58 @@ router.get("/get-factura/date/:startDate/:endDate", async (req, res) => {
   const { startDate, endDate } = req.params;
 
   try {
-    // Utiliza aggregate para unir las colecciones Factura y Pagos
-    const ordenes = await Factura.aggregate([
-      {
-        $match: {
-          "dateRecepcion.fecha": {
-            $gte: startDate,
-            $lte: endDate,
-          },
-        },
+    // Buscar todas las facturas dentro del rango de fechas
+    const ordenes = await Factura.find({
+      "dateRecepcion.fecha": {
+        $gte: startDate,
+        $lte: endDate,
       },
-      {
-        $lookup: {
-          from: "pagos", // Nombre de la colección de pagos
-          localField: "_id", // Campo de la factura que se usará para la unión
-          foreignField: "idOrden", // Campo en la colección de pagos que se relaciona con la factura
-          as: "ListPago", // Nombre del campo donde se almacenarán los pagos relacionados
-        },
-      },
-      {
-        $addFields: {
-          ListPagoIds: { $toString: "$_id" }, // Convertir el _id de la factura a cadena
-        },
-      },
-      {
-        $lookup: {
-          from: "pagos", // Nombre de la colección de pagos
-          localField: "ListPagoIds", // Campo de la factura convertido a cadena
-          foreignField: "idOrden", // Campo en la colección de pagos que se relaciona con la factura
-          as: "ListPago", // Nombre del campo donde se almacenarán los pagos relacionados
-        },
-      },
-      {
-        $unset: "ListPagoIds", // Eliminar el campo temporal ListPagoIds después de la unión
-      },
-      {
-        $addFields: {
-          ListPago: {
-            $map: {
-              input: "$ListPago", // Itera sobre los pagos relacionados
-              as: "pago", // Alias para cada pago
-              in: {
-                // Agrega los campos específicos del pago
-                _id: "$$pago._id",
-                idUser: "$$pago.idUser",
-                idOrden: "$$pago.idOrden",
-                orden: "$codRecibo",
-                ordenDateCreation: "$dateCreation.fecha",
-                date: "$$pago.date",
-                isCounted: "$$pago.isCounted",
-                nombre: "$Nombre",
-                total: "$$pago.total",
-                metodoPago: "$$pago.metodoPago",
-                Modalidad: "$Modalidad",
-              },
-            },
-          },
-        },
-      },
-      {
-        $project: {
-          // Proyecta los campos de las facturas junto con el campo ListPago creado
-          dateCreation: 1,
-          codRecibo: 1,
-          dateRecepcion: 1,
-          Modalidad: 1,
-          Nombre: 1,
-          Items: 1,
-          celular: 1,
-          direccion: 1,
-          datePrevista: 1,
-          dateEntrega: 1,
-          descuento: 1,
-          estadoPrenda: 1,
-          estado: 1,
-          index: 1,
-          dni: 1,
-          subTotal: 1,
-          totalNeto: 1,
-          cargosExtras: 1,
-          factura: 1,
-          modeRegistro: 1,
-          notas: 1,
-          modoDescuento: 1,
-          gift_promo: 1,
-          location: 1,
-          attendedBy: 1,
-          lastEdit: 1,
-          typeRegistro: 1,
-          ListPago: 1,
-        },
-      },
-    ]);
+    }).lean();
 
-    const resultados = [];
-    const donacionRegistros = await Donacion.find();
+    // Obtener todos los registros de donaciones relevantes
+    const donacionRegistros = await Donacion.find({
+      "donationDate.fecha": {
+        $gte: startDate,
+        $lte: endDate,
+      },
+    }).lean();
 
-    for (const orden of ordenes) {
-      // Verifica condiciones para buscar en Donacion
-      if (orden.location === 3 && orden.estadoPrenda === "donado") {
-        // Busca en la colección Donacion
-        let donationDate;
-        // Itera a través de los registros de Almacen
-        for (const donated of donacionRegistros) {
-          // Itera a través de los serviceOrder del registro de Almacen
-          for (const serviceOrderId of donated.serviceOrder) {
-            if (serviceOrderId === orden._id.toString()) {
-              // Encuentra la orden correspondiente a serviceOrderId
-              donationDate = donated.donationDate;
-              break; // Si se encontró la orden, puedes salir del bucle
-            }
-          }
+    // Procesar cada orden de factura de manera asincrónica
+    const resultados = await Promise.all(
+      ordenes.map(async (orden) => {
+        // Obtener todos los pagos relevantes para la factura actual
+        const pagos = await Pagos.find({
+          _id: { $in: orden.listPago },
+        }).lean();
 
-          if (donationDate) {
-            resultados.push({
-              ...orden,
-              donationDate,
-            });
-            break;
-          }
-        }
-      } else {
-        // Si no cumple con las condiciones, agrega la factura con donationDate vacío
-        resultados.push({
+        // Mapear los pagos relevantes al formato deseado
+        const ListPago = pagos.map((pago) => ({
+          _id: pago._id,
+          idUser: pago.idUser,
+          idOrden: orden._id,
+          orden: orden.codRecibo,
+          ordenDateCreation: orden.dateCreation.fecha,
+          date: pago.date,
+          isCounted: pago.isCounted,
+          nombre: orden.Nombre,
+          total: pago.total,
+          metodoPago: pago.metodoPago,
+          Modalidad: pago.Modalidad,
+        }));
+
+        // Buscar la fecha de donación correspondiente
+        const donationDate = donacionRegistros.find((donado) => {
+          return donado.serviceOrder.includes(orden._id.toString());
+        })?.donationDate || { fecha: "", hora: "" };
+
+        // Devolver la orden de factura con los datos procesados
+        return {
           ...orden,
-          donationDate: {
-            fecha: "",
-            hora: "",
-          },
-        });
-      }
-    }
+          ListPago,
+          donationDate,
+        };
+      })
+    );
 
     res.status(200).json(resultados);
   } catch (error) {
@@ -870,9 +792,9 @@ router.put("/update-factura/:id", openingHours, async (req, res) => {
 
             await session.commitTransaction();
 
-            const infoPagos = await GetPagosIdOrden(
-              orderUpdated._id.toString()
-            );
+            const infoPagos = await Pagos.find({
+              _id: { $in: orderUpdated.listPago },
+            }).lean();
 
             const finalLPagos = [];
             if (lPagos.length > 0) {
@@ -983,7 +905,10 @@ router.post("/cancel-entrega/:idOrden", async (req, res) => {
       await session.commitTransaction();
 
       orderUpdate = orderUpdate.toObject();
-      const infoPagos = await GetPagosIdOrden(orderUpdate._id.toString());
+
+      const infoPagos = await Pagos.find({
+        _id: { $in: orderUpdate.listPago },
+      }).lean();
 
       res.json({
         ...orderUpdate,
