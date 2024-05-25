@@ -3,6 +3,7 @@ import Pagos from "../models/pagos.js";
 import Factura from "../models/Factura.js";
 import db from "../config/db.js";
 import { GetPagosId } from "../utils/utilsFuncion.js";
+import { handleGetInfoUser } from "./cuadreDiario.js";
 
 const router = express.Router();
 
@@ -118,6 +119,15 @@ router.post("/add-pago", async (req, res) => {
     // Guardar el nuevo pago en la base de datos dentro de la transacción
     const pagoGuardado = await nuevoPago.save({ session }, { _id: 1 });
 
+    // Obtener el ID del pago guardado
+    const pagoId = pagoGuardado._id;
+
+    const facturaActualizada = await Factura.findByIdAndUpdate(
+      idOrden,
+      { $addToSet: { listPago: pagoId } },
+      { new: true, select: "Modalidad Nombre codRecibo _id" }
+    );
+
     // Confirmar la transacción
     await session.commitTransaction();
 
@@ -127,7 +137,19 @@ router.post("/add-pago", async (req, res) => {
     // Enviar la respuesta al cliente con el pago guardado
     res.json({
       tipo: "added",
-      info: await GetPagosId(pagoGuardado._id.toString()),
+      info: {
+        _id: pagoGuardado._id,
+        idUser: pagoGuardado.idUser,
+        orden: facturaActualizada.codRecibo,
+        idOrden: pagoGuardado.idOrden,
+        date: pagoGuardado.date,
+        nombre: facturaActualizada.Nombre,
+        total: pagoGuardado.total,
+        metodoPago: pagoGuardado.metodoPago,
+        Modalidad: facturaActualizada.Modalidad,
+        isCounted: pagoGuardado.isCounted,
+        infoUser: await handleGetInfoUser(pagoGuardado.idUser),
+      },
     });
   } catch (error) {
     console.error("Error al editar el pago:", error);
@@ -186,8 +208,6 @@ router.delete("/delete-pago/:idPago", async (req, res) => {
     // Obtener el ID del pago a eliminar desde los parámetros de la URL
     const { idPago } = req.params;
 
-    const pagoToDelete = await GetPagosId(idPago);
-
     // Buscar el pago por su ID y eliminarlo
     const pagoEliminado = await Pagos.findByIdAndDelete(idPago);
 
@@ -196,7 +216,32 @@ router.delete("/delete-pago/:idPago", async (req, res) => {
       return res.status(404).json({ mensaje: "Pago no encontrado" });
     }
 
-    // Enviar la respuesta al cliente con el pago eliminado
+    // Obtener el ID de la factura asociada al pago eliminado
+    const facturaId = pagoEliminado.idOrden;
+
+    // Actualizar la factura asociada eliminando el ID del pago de su lista de pagos
+    const facturaActualizada = await Factura.findByIdAndUpdate(
+      facturaId,
+      { $pull: { listPago: pagoEliminado._id } },
+      { new: true, select: "Modalidad Nombre codRecibo _id" }
+    );
+
+    // Construir el objeto de respuesta con los datos del pago eliminado y los campos requeridos de la factura actualizada
+    const pagoToDelete = {
+      _id: idPago,
+      idUser: pagoEliminado.idUser,
+      orden: facturaActualizada.codRecibo,
+      idOrden: pagoEliminado.idOrden,
+      date: pagoEliminado.date,
+      nombre: facturaActualizada.Nombre,
+      total: pagoEliminado.total,
+      metodoPago: pagoEliminado.metodoPago,
+      Modalidad: facturaActualizada.Modalidad,
+      isCounted: pagoEliminado.isCounted,
+      infoUser: await handleGetInfoUser(pagoEliminado.idUser),
+    };
+
+    // Enviar la respuesta al cliente con el pago eliminado y los datos de la factura actualizada
     res.json({
       tipo: "deleted",
       info: pagoToDelete,
@@ -208,5 +253,4 @@ router.delete("/delete-pago/:idPago", async (req, res) => {
       .json({ mensaje: "Error al eliminar el pago", error: error.message });
   }
 });
-
 export default router;

@@ -125,6 +125,7 @@ router.post("/add-factura", openingHours, async (req, res) => {
       descuento,
       estadoPrenda,
       estado,
+      listPago: [],
       index: nuevoIndice,
       dni,
       subTotal,
@@ -168,19 +169,6 @@ router.post("/add-factura", openingHours, async (req, res) => {
     }
 
     let facturaGuardada = fSaved.toObject();
-
-    const lPagos = [];
-    if (infoPago.length > 0) {
-      await Promise.all(
-        infoPago.map(async (pago) => {
-          const newIPago = await handleAddPago({
-            ...pago,
-            idOrden: facturaGuardada._id,
-          });
-          lPagos.push(newIPago);
-        })
-      );
-    }
 
     let iGasto;
     if (infoOrden.Modalidad === "Delivery") {
@@ -252,17 +240,53 @@ router.post("/add-factura", openingHours, async (req, res) => {
       );
     }
 
+    const lPagos = [];
+    if (infoPago.length > 0) {
+      await Promise.all(
+        infoPago.map(async (pago) => {
+          const newIPago = await handleAddPago({
+            ...pago,
+            idOrden: facturaGuardada._id,
+          });
+          lPagos.push(newIPago);
+        })
+      );
+    }
+
     await session.commitTransaction();
 
-    const infoPagos = await Pagos.find({
-      _id: { $in: facturaGuardada.listPago },
-    }).lean();
+    let infoPagos = [];
+    if (lPagos.length > 0) {
+      const idsPagos = lPagos.map((pago) => pago._id);
+
+      // Actualizar la facturaGuardada con los nuevos ids de pago
+      facturaGuardada = await Factura.findByIdAndUpdate(
+        facturaGuardada._id, // El _id de la factura que deseas actualizar
+        { $addToSet: { listPago: { $each: idsPagos } } }, // Agregar los nuevos ids de pago al campo listPago
+        { new: true } // Opción new: true para obtener el documento actualizado
+      ).lean();
+
+      infoPagos = await Pagos.find({
+        _id: { $in: facturaGuardada.listPago },
+      }).lean();
+    }
 
     const finalLPagos = [];
     if (lPagos.length > 0) {
       await Promise.all(
         lPagos.map(async (pago) => {
-          const newInfoPago = await GetPagosId(pago._id.toString());
+          const newInfoPago = {
+            _id: pago._id,
+            idUser: pago.idUser,
+            orden: facturaGuardada.codRecibo,
+            idOrden: pago.idOrden,
+            date: pago.data,
+            nombre: facturaGuardada.Nombre,
+            total: pago.total,
+            metodoPago: pago.metodoPago,
+            Modalidad: facturaGuardada.Modalidad,
+            isCounted: pago.isCounted,
+          };
           finalLPagos.push(newInfoPago);
         })
       );
