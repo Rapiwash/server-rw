@@ -119,13 +119,10 @@ router.post("/add-pago", async (req, res) => {
     // Guardar el nuevo pago en la base de datos dentro de la transacción
     const pagoGuardado = await nuevoPago.save({ session }, { _id: 1 });
 
-    // Obtener el ID del pago guardado
-    const pagoId = pagoGuardado._id;
-
     const facturaActualizada = await Factura.findByIdAndUpdate(
       idOrden,
-      { $addToSet: { listPago: pagoId } },
-      { new: true, select: "Modalidad Nombre codRecibo _id" }
+      { $addToSet: { listPago: pagoGuardado._id } },
+      { new: true, select: "Modalidad Nombre codRecibo _id", session } // Pasar la sesión de transacción
     );
 
     // Confirmar la transacción
