@@ -16,13 +16,10 @@ import Producto from "../models/portafolio/productos.js";
 
 import Pagos from "../models/pagos.js";
 
-import {
-  GetPagosId,
-  GetPagosIdOrden,
-  handleGetInfoDelivery,
-} from "../utils/utilsFuncion.js";
+import { handleGetInfoDelivery } from "../utils/utilsFuncion.js";
 import { handleAddPago } from "./pagos.js";
 import { handleAddGasto } from "./gastos.js";
+import { handleGetInfoUser } from "./cuadreDiario.js";
 
 const router = express.Router();
 
@@ -172,9 +169,11 @@ router.post("/add-factura", openingHours, async (req, res) => {
 
     let iGasto;
     if (infoOrden.Modalidad === "Delivery") {
-      const { infoGastoByDelivery } = req.body;
-      if (Object.keys(infoGastoByDelivery).length) {
-        iGasto = await handleAddGasto(infoGastoByDelivery);
+      if (req.body.hasOwnProperty("infoGastoByDelivery")) {
+        const { infoGastoByDelivery } = req.body;
+        if (Object.keys(infoGastoByDelivery).length) {
+          iGasto = await handleAddGasto(infoGastoByDelivery);
+        }
       }
     }
 
@@ -341,41 +340,6 @@ router.get("/get-factura/:id", (req, res) => {
     });
 });
 
-router.get("/get-factura/date/:datePago", async (req, res) => {
-  const { datePago } = req.params;
-
-  try {
-    // Paso 1: Obtener todos los pagos para una fecha específica
-    const infoPagos = await Pagos.find({
-      "date.fecha": datePago,
-    });
-
-    // Paso 2: Agrupar los pagos por idOrden
-    const pagosAgrupados = infoPagos.reduce((acc, pago) => {
-      if (!acc[pago.idOrden]) {
-        acc[pago.idOrden] = [];
-      }
-      acc[pago.idOrden].push(pago);
-      return acc;
-    }, {});
-
-    // Paso 3: Para cada grupo de idOrden, buscar la información de la factura correspondiente
-    const estructuraCombinada = [];
-    for (const idOrden of Object.keys(pagosAgrupados)) {
-      const pagosGrupo = pagosAgrupados[idOrden];
-      const factura = await Factura.findOne({ _id: idOrden }).lean();
-      if (factura) {
-        estructuraCombinada.push({ ...factura, ListPago: pagosGrupo });
-      }
-    }
-
-    res.json(estructuraCombinada);
-  } catch (error) {
-    console.error(error);
-    res.status(500).send("Error en el servidor: " + error.message);
-  }
-});
-
 router.get("/get-factura/date/:startDate/:endDate", async (req, res) => {
   const { startDate, endDate } = req.params;
 
@@ -432,6 +396,71 @@ router.get("/get-factura/date/:startDate/:endDate", async (req, res) => {
         };
       })
     );
+
+    res.status(200).json(resultados);
+  } catch (error) {
+    console.error("Error al obtener datos: ", error);
+    res.status(500).json({ mensaje: "Error interno del servidor" });
+  }
+});
+
+router.get("/get-factura/date/:startDate/:endDate", async (req, res) => {
+  const { startDate, endDate } = req.params;
+
+  try {
+    // Buscar todas las facturas dentro del rango de fechas
+    const ordenes = await Factura.find({
+      "dateRecepcion.fecha": {
+        $gte: startDate,
+        $lte: endDate,
+      },
+    }).lean();
+
+    // Obtener todos los pagos relevantes
+    const pagos = await Pagos.find().lean();
+
+    // Obtener todos los registros de donaciones relevantes
+    const donacionRegistros = await Donacion.find({
+      "donationDate.fecha": {
+        $gte: startDate,
+        $lte: endDate,
+      },
+    }).lean();
+
+    // Procesar cada orden de factura
+    const resultados = ordenes.map((orden) => {
+      // Filtrar los pagos relevantes para esta orden de factura
+      const pagosOrden = pagos.filter(
+        (pago) => pago.idOrden === orden._id.toString()
+      );
+
+      // Mapear los pagos relevantes al formato deseado
+      const ListPago = pagosOrden.map((pago) => ({
+        _id: pago._id,
+        idUser: pago.idUser,
+        idOrden: orden._id,
+        orden: orden.codRecibo,
+        ordenDateCreation: orden.dateCreation.fecha,
+        date: pago.date,
+        isCounted: pago.isCounted,
+        nombre: orden.Nombre,
+        total: pago.total,
+        metodoPago: pago.metodoPago,
+        Modalidad: pago.Modalidad,
+      }));
+
+      // Buscar la fecha de donación correspondiente
+      const donationDate = donacionRegistros.find((donado) => {
+        return donado.serviceOrder.includes(orden._id.toString());
+      })?.donationDate || { fecha: "", hora: "" };
+
+      // Devolver la orden de factura con los datos procesados
+      return {
+        ...orden,
+        ListPago,
+        donationDate,
+      };
+    });
 
     res.status(200).json(resultados);
   } catch (error) {
@@ -660,9 +689,11 @@ router.put("/update-factura/:id", openingHours, async (req, res) => {
               orderUpdated.Modalidad === "Delivery" &&
               orderUpdated.estadoPrenda === "entregado"
             ) {
-              const { infoGastoByDelivery } = req.body;
-              if (Object.keys(infoGastoByDelivery).length) {
-                iGasto = await handleAddGasto(infoGastoByDelivery);
+              if (req.body.hasOwnProperty("infoGastoByDelivery")) {
+                const { infoGastoByDelivery } = req.body;
+                if (Object.keys(infoGastoByDelivery).length) {
+                  iGasto = await handleAddGasto(infoGastoByDelivery);
+                }
               }
             }
 
@@ -824,8 +855,19 @@ router.put("/update-factura/:id", openingHours, async (req, res) => {
             if (lPagos.length > 0) {
               await Promise.all(
                 lPagos.map(async (pago) => {
-                  const newInfoPago = await GetPagosId(pago._id.toString());
-                  finalLPagos.push(newInfoPago);
+                  finalLPagos.push({
+                    _id: pago._id,
+                    idUser: pago.idUser,
+                    orden: orderUpdated.codRecibo,
+                    idOrden: pago.idOrden,
+                    date: pago.date,
+                    nombre: orderUpdated.Nombre,
+                    total: pago.total,
+                    metodoPago: pago.metodoPago,
+                    Modalidad: orderUpdated.Modalidad,
+                    isCounted: pago.isCounted,
+                    infoUser: await handleGetInfoUser(pago.idUser),
+                  });
                 })
               );
             }
@@ -858,17 +900,6 @@ router.put("/update-factura/:id", openingHours, async (req, res) => {
     res
       .status(500)
       .json({ mensaje: "Error al actualizar los datos de la orden" });
-  }
-});
-
-router.get("/pagos-prueba/:idOrden", async (req, res) => {
-  try {
-    const idOrden = req.params.idOrden;
-    const infoPagos = await GetPagosIdOrden(idOrden);
-    res.json(infoPagos);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ mensaje: "Error al cancelar Entrega" });
   }
 });
 
@@ -929,7 +960,6 @@ router.post("/cancel-entrega/:idOrden", async (req, res) => {
       await session.commitTransaction();
 
       orderUpdate = orderUpdate.toObject();
-
       const infoPagos = await Pagos.find({
         _id: { $in: orderUpdate.listPago },
       }).lean();

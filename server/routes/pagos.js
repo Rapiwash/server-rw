@@ -2,7 +2,8 @@ import express from "express";
 import Pagos from "../models/pagos.js";
 import Factura from "../models/Factura.js";
 import db from "../config/db.js";
-import { GetPagosId } from "../utils/utilsFuncion.js";
+import { GetPagoMasDetalleOrden } from "../utils/utilsFuncion.js";
+
 import { handleGetInfoUser } from "./cuadreDiario.js";
 
 const router = express.Router();
@@ -24,6 +25,19 @@ export const handleAddPago = async (nuevoPago) => {
   }
 };
 
+export const handleGetPagosByIdOrden = async (idOrden) => {
+  try {
+    // Busca todos los pagos con la idOrden especificada
+    const pagos = await Pagos.find({ idOrden });
+
+    // Devuelve los pagos encontrados
+    return pagos;
+  } catch (error) {
+    console.error("Error al buscar pagos por idOrden:", error);
+    throw error; // Puedes manejar el error según tus necesidades
+  }
+};
+
 router.get("/get-pagos", async (req, res) => {
   await Pagos.find()
     .then((infoPagos) => {
@@ -33,65 +47,6 @@ router.get("/get-pagos", async (req, res) => {
       console.error("Error al obtener los datos:", error);
       res.status(500).json({ mensaje: "Error al obtener los datos" });
     });
-});
-
-// Ruta para obtener pagos por fecha
-router.get("/get-pagos/:fecha", async (req, res) => {
-  try {
-    const fecha = req.params.fecha;
-
-    // Utilizar agregación para unir la colección Pagos con la colección Factura
-    const pagosPorFecha = await Pagos.aggregate([
-      {
-        $match: { "date.fecha": fecha },
-      },
-      {
-        $lookup: {
-          from: "facturas",
-          let: { idOrden: "$idOrden" }, // Guardamos idOrden como es
-          pipeline: [
-            {
-              $addFields: {
-                // Convertimos _id a String
-                _idToString: { $toString: "$_id" },
-              },
-            },
-            {
-              $match: {
-                // Comparamos idOrden con _id convertido a String
-                $expr: { $eq: ["$$idOrden", "$_idToString"] },
-              },
-            },
-          ],
-          as: "factura",
-        },
-      },
-      {
-        $unwind: "$factura", // Desenrollar el array "factura"
-      },
-      {
-        $project: {
-          // Proyectar solo los campos necesarios de la factura
-          _id: "$_id",
-          idUser: "$idUser",
-          orden: "$factura.codRecibo",
-          ordenDateCreation: "$factura.dateCreation.fecha",
-          idOrden: "$idOrden",
-          date: "$date",
-          isCounted: "$pago.isCounted",
-          nombre: "$factura.Nombre",
-          total: "$total",
-          metodoPago: "$metodoPago",
-          Modalidad: "$factura.Modalidad",
-        },
-      },
-    ]);
-
-    res.json(pagosPorFecha);
-  } catch (error) {
-    console.error("Error al obtener los pagos por fecha:", error);
-    res.status(500).json({ mensaje: "Error al obtener los pagos por fecha" });
-  }
 });
 
 // Ruta para agregar un nuevo registro de pago
@@ -189,7 +144,7 @@ router.put("/edit-pago/:idPago", async (req, res) => {
     // Enviar la respuesta al cliente con el pago actualizado
     res.json({
       tipo: "updated",
-      info: await GetPagosId(pagoActualizado._id.toString()),
+      info: await GetPagoMasDetalleOrden(pagoActualizado._id.toString()),
     });
   } catch (error) {
     console.error("Error al editar el pago:", error);
@@ -239,6 +194,8 @@ router.delete("/delete-pago/:idPago", async (req, res) => {
     };
 
     // Enviar la respuesta al cliente con el pago eliminado y los datos de la factura actualizada
+
+    // Enviar la respuesta al cliente con el pago eliminado
     res.json({
       tipo: "deleted",
       info: pagoToDelete,
@@ -250,4 +207,5 @@ router.delete("/delete-pago/:idPago", async (req, res) => {
       .json({ mensaje: "Error al eliminar el pago", error: error.message });
   }
 });
+
 export default router;
