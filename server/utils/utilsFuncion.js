@@ -40,7 +40,7 @@ export const handleGetInfoDelivery = async () => {
     // Consulta a la colección Servicio
     const servicio = await Servicio.findOne({
       idCategoria: categoriaId,
-      nombre: "Delivery",
+      nombre: nameDelivery,
     });
 
     // Verifica si se encontró el servicio
