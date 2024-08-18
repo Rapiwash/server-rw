@@ -52,7 +52,7 @@ export const io = new SocketServer(server, {
 
 app.use(
   cors({
-    origin: "*",
+    origin: "https://rapiwash.basadre.oneskala.com",
   })
 );
 app.use(express.json());
