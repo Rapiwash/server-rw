@@ -46,13 +46,15 @@ const server = http.createServer(app);
 
 export const io = new SocketServer(server, {
   cors: {
-    origin: "https://rapiwash.basadre.oneskala.com",
+    // origin: "https://rapiwash.basadre.oneskala.com",
+    origin: "https://orcrapiwash-hj5k.onrender.com",
   },
 });
 
 app.use(
   cors({
-    origin: "https://rapiwash.basadre.oneskala.com",
+    // origin: "https://rapiwash.basadre.oneskala.com",
+    origin: "https://orcrapiwash-hj5k.onrender.com",
   })
 );
 app.use(express.json());
